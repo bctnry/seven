@@ -27,6 +27,21 @@ export interface SevenComponent {
     name: string,
     call: (machine: SevenMachine, args: {[name: string]: any}) => boolean,
 }
+export class SevenExpr {
+    constructor(public type: string, values: {[key: string]: any}) {
+        this.type = type;
+        for (const k in values) {
+            if (values.hasOwnProperty(k)) {
+                const v = values[k];
+                (this as any)[k] = v;
+            }
+        }
+    }
+}
+export interface SevenExternFunction {
+    name: string,
+    call: (machine: SevenMachine, args: any[]) => any
+}
 type _MachineContinuation = {
     program: SevenMachineProgram,
     position: number
@@ -57,6 +72,11 @@ export class SevenMachine {
     public registerComponent(component: SevenComponent) {
         this._componentDict[component.name] = component;
         this._componentListDirtyFlag = true;
+    }
+
+    private _externFunctionDict: {[key: string]: SevenExternFunction} = {};
+    public registerExternFunction(externFunction: SevenExternFunction) {
+        this._externFunctionDict[externFunction.name] = externFunction;
     }
     
     private _reactiveVariableMap: {[varName: string]: SevenReactiveVariable<any>} = {};
@@ -101,7 +121,7 @@ export class SevenMachine {
     private _callStack: number[] = [];
     public step() {
         // NOTE: `+1` means the current program.
-        while (this._machineContinuationStack.length + 1 > 0) {
+        fullStepProcess: while (this._machineContinuationStack.length + 1 > 0) {
             let instr = this.currentInstr;
             if (!instr) {
                 // NOTE: if no more continuation we should leave.
@@ -116,10 +136,12 @@ export class SevenMachine {
                 switch (instr._) {
                     case SevenMachineInstrType.SET_REACTIVE_VAR: {
                         this._reactiveVariableMap[instr.name].value = instr.eval? this.eval(instr.value as string) : instr.value;
+                        this._position++;
                         break;
                     }
                     case SevenMachineInstrType.SET_STATIC_VAR: {
                         this._staticVariableMap[instr.name] = instr.eval? this.eval(instr.value as string) : instr.value;
+                        this._position++;
                         break;
                     }
                     case SevenMachineInstrType.GOTO: {
@@ -138,6 +160,7 @@ export class SevenMachine {
                         let component = this.getComponentByName(instr.name);
                         if (!component) { throw new Error(`SevenMachine: no component named ${instr.name} registered for this machine.`); }
                         keepStepping = component.call(this, instr.args);
+                        this._position++;
                         break;
                     }
                     case SevenMachineInstrType.RETURN: {
@@ -146,6 +169,8 @@ export class SevenMachine {
                         break;
                     }
                 }
+                if (!(instr = this.currentInstr)) { break; }
+                if (!keepStepping) { break fullStepProcess; }
             } while (keepStepping);
         }
     }
@@ -204,4 +229,3 @@ export type SevenMachineInstr
     | {_:SevenMachineInstrType.RETURN}
     | {_:SevenMachineInstrType.CALL_COMPONENT,
         name: string, args: {[name: string]: any}}
-
