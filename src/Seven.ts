@@ -111,7 +111,7 @@ export class SevenMachine {
         this._position = 0;
     }
     public eval(source: string): any {
-        return eval(`function(__MACHINE){\n${source}\n}`)(this._expose());
+        return eval(`(function(__MACHINE){return ${source}})(this._expose())`);
     }
     public get halted(): boolean {
         return !!this._program[this._position];
