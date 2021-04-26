@@ -28,15 +28,7 @@ export interface SevenComponent {
     call: (machine: SevenMachine, args: {[name: string]: any}) => boolean,
 }
 export class SevenExpr {
-    constructor(public type: string, values: {[key: string]: any}) {
-        this.type = type;
-        for (const k in values) {
-            if (values.hasOwnProperty(k)) {
-                const v = values[k];
-                (this as any)[k] = v;
-            }
-        }
-    }
+    constructor(public _: string, public args: any[]) {}
 }
 export interface SevenExternFunction {
     name: string,
@@ -45,6 +37,9 @@ export interface SevenExternFunction {
 type _MachineContinuation = {
     program: SevenMachineProgram,
     position: number
+}
+export type SevenMachineInitOptions = {
+    traceEnabled?: boolean,
 }
 export class SevenMachine {
 
@@ -74,9 +69,9 @@ export class SevenMachine {
         this._componentListDirtyFlag = true;
     }
 
-    private _externFunctionDict: {[key: string]: SevenExternFunction} = {};
+    private _externFunctionMap: {[key: string]: SevenExternFunction} = {};
     public registerExternFunction(externFunction: SevenExternFunction) {
-        this._externFunctionDict[externFunction.name] = externFunction;
+        this._externFunctionMap[externFunction.name] = externFunction;
     }
     
     private _reactiveVariableMap: {[varName: string]: SevenReactiveVariable<any>} = {};
@@ -110,8 +105,21 @@ export class SevenMachine {
         this._program = program;
         this._position = 0;
     }
-    public eval(source: string): any {
-        return eval(`(function(__MACHINE){return ${source}})(this._expose())`);
+    public jsEval(source: string): any {
+        return eval(`(function(Seven){return (${source})})(
+            {   Machine:this._expose(),
+                $:this.reactiveVariableMap,
+                $$:this.staticVariableMap,
+            })`);
+    }
+    public eval(source: SevenExpr|any): any {
+        console.log(source);
+        console.log(source instanceof SevenExpr);
+        if (source instanceof SevenExpr) {
+            return this._externFunctionMap[source._].call(this, source.args);
+        } else {
+            return source;
+        }
     }
     public get halted(): boolean {
         return !!this._program[this._position];
@@ -119,6 +127,7 @@ export class SevenMachine {
     private _machineContinuationStack: _MachineContinuation[] = [];
     // NOTE: store the position one plus *after* the CALL instr.
     private _callStack: number[] = [];
+    private _trace: SevenMachineInstr[] = [];
     public step() {
         // NOTE: `+1` means the current program.
         fullStepProcess: while (this._machineContinuationStack.length + 1 > 0) {
@@ -135,12 +144,12 @@ export class SevenMachine {
             do {
                 switch (instr._) {
                     case SevenMachineInstrType.SET_REACTIVE_VAR: {
-                        this._reactiveVariableMap[instr.name].value = instr.eval? this.eval(instr.value as string) : instr.value;
+                        this._reactiveVariableMap[instr.name].value = (instr.eval?this.jsEval:this.eval)(instr.value as any);
                         this._position++;
                         break;
                     }
                     case SevenMachineInstrType.SET_STATIC_VAR: {
-                        this._staticVariableMap[instr.name] = instr.eval? this.eval(instr.value as string) : instr.value;
+                        this._staticVariableMap[instr.name] = (instr.eval?this.jsEval:this.eval)(instr.value as any);
                         this._position++;
                         break;
                     }
@@ -149,7 +158,7 @@ export class SevenMachine {
                         break;
                     }
                     case SevenMachineInstrType.COND_GOTO: {
-                        this._position = instr.eval? this.eval(instr.condition) : instr.condition;
+                        this._position = (instr.eval?this.jsEval:this.eval)(instr.condition as any);
                         break;
                     }
                     case SevenMachineInstrType.CALL: {
@@ -169,6 +178,7 @@ export class SevenMachine {
                         break;
                     }
                 }
+                if (this._options?.traceEnabled) { this._trace.push(instr); }
                 if (!(instr = this.currentInstr)) { break; }
                 if (!keepStepping) { break fullStepProcess; }
             } while (keepStepping);
@@ -199,8 +209,13 @@ export class SevenMachine {
         };
     }
 
-    constructor(initProgram?: SevenMachineProgram) {
+    private _options: SevenMachineInitOptions|undefined;
+    constructor(initProgram?: SevenMachineProgram, options?: SevenMachineInitOptions) {
         this._program = initProgram||[];
+        this._options = options;
+        [Prelude.BasicMath, Prelude.BasicBitwise, Prelude.BasicConditon, Prelude.BasicPrimitive].forEach((v) => {
+            v.forEach((v) => this.registerExternFunction(v));
+        });
     }
 }
 
@@ -229,3 +244,41 @@ export type SevenMachineInstr
     | {_:SevenMachineInstrType.RETURN}
     | {_:SevenMachineInstrType.CALL_COMPONENT,
         name: string, args: {[name: string]: any}}
+
+export namespace Prelude {
+    export const BasicMath: SevenExternFunction[] = [
+        {name: '+', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a + b) },
+        {name: '-', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a - b) },
+        {name: '*', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a * b) },
+        {name: '/', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a / b) },
+        {name: '%', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a % b) },
+        {name: 'ABS', call: (m, args) => Math.abs(args[0]) },
+    ];
+    export const BasicBitwise: SevenExternFunction[] = [
+        {name: '&', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a & b) },
+        {name: '|', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a | b) },
+        {name: '^', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a ^ b) },
+    ];
+    export const BasicConditon: SevenExternFunction[] = [
+        {name: '<', call: (m, args) => m.eval(args[0]) < m.eval(args[1]) },
+        {name: '>', call: (m, args) => m.eval(args[0]) > m.eval(args[1]) },
+        {name: '<=', call: (m, args) => m.eval(args[0]) <= m.eval(args[1]) },
+        {name: '>=', call: (m, args) => m.eval(args[0]) >= m.eval(args[1]) },
+        {name: '==', call: (m, args) => m.eval(args[0]) == m.eval(args[1]) },
+        {name: '!=', call: (m, args) => m.eval(args[0]) != m.eval(args[1]) },
+        {name: 'and', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a && b) },
+        {name: 'or', call: (m, args) => args.map((v) => m.eval(v)).reduce((a, b) => a || b) },
+        {name: 'not', call: (m, args) => !m.eval(args[0])},
+    ];
+    export const BasicPrimitive: SevenExternFunction[] = [
+        {name: '#VAR', call: (m, args) => m.getStaticVariableValueByName(args[0])},
+        {name: '$VAR', call: (m, args) => m.getReactiveVariableByName(args[0])?.value},
+        {name: '.', call: (m, args) => {
+            let x = m.eval(args[0]);
+            for (let i = 1; i < args.length; i++) {
+                x = x[m.eval(args[i])];
+            }
+            return x;
+        }}
+    ];
+}
