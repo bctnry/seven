@@ -25,7 +25,7 @@ export class SevenReactiveVariable<A> {
 
 export interface SevenComponent {
     name: string,
-    call: (machine: SevenMachine, args: {[name: string]: any}) => boolean,
+    call: (machine: SevenMachine, args: {[name: string]: any}) => boolean|void,
 }
 export class SevenExpr {
     constructor(public _: string, public args: any[]) {}
@@ -107,8 +107,7 @@ export class SevenMachine {
     }
     public jsEval(source: string): any {
         return eval(`(function(Seven){return (${source})})(
-            {   Machine:this._expose(),
-                $:this.reactiveVariableMap,
+            {   $:this.reactiveVariableMap,
                 $$:this.staticVariableMap,
             })`);
     }
@@ -128,7 +127,13 @@ export class SevenMachine {
     // NOTE: store the position one plus *after* the CALL instr.
     private _callStack: number[] = [];
     private _trace: SevenMachineInstr[] = [];
-    public step() {
+    private _lock: boolean = false;
+    public lock() { this._lock = true; }
+    public unlock() { this._lock = false; }
+    public get locked() { return this._lock; }
+
+    public step(singleStep: boolean = false) {
+        if (this._lock) { return; }
         // NOTE: `+1` means the current program.
         fullStepProcess: while (this._machineContinuationStack.length + 1 > 0) {
             let instr = this.currentInstr;
@@ -168,7 +173,7 @@ export class SevenMachine {
                     case SevenMachineInstrType.CALL_COMPONENT: {
                         let component = this.getComponentByName(instr.name);
                         if (!component) { throw new Error(`SevenMachine: no component named ${instr.name} registered for this machine.`); }
-                        keepStepping = component.call(this, instr.args);
+                        keepStepping = !!component.call(this, instr.args);
                         this._position++;
                         break;
                     }
@@ -180,6 +185,7 @@ export class SevenMachine {
                 }
                 if (this._options?.traceEnabled) { this._trace.push(instr); }
                 if (!(instr = this.currentInstr)) { break; }
+                if (singleStep) { break fullStepProcess; }
                 if (!keepStepping) { break fullStepProcess; }
             } while (keepStepping);
         }
@@ -188,25 +194,15 @@ export class SevenMachine {
         while (!this.halted) { this.step(); }
     }
 
-    // NOTE: we need some kind of separation so that components cannot fully control
-    // the running of the machine; components can use the machine to run subprograms,
-    // but can only control the stepping by returning a boolean value in its call method.
-    // when `true` is returned, the machine will take one more step after the component call.
-    // this is to allow "background" component to stay invisible to the end-user.
     // NOTE: we have to do some kind of "continuation stack" if we want to support
     // running sub-program (e.g. switching between different scenes.)
     private _pushCurrentContinuation() {
         this._machineContinuationStack.push({program: this._program, position: this._position});
     }
-    private _expose(): ISevenMachineInComponent {
-        return {
-            reactiveVariableMap: this.reactiveVariableMap,
-            staticVariableMap: this.staticVariableMap,
-            runProgram: (program: SevenMachineProgram) => {
-                this._pushCurrentContinuation();
-                this.loadProgram(program);
-            }
-        };
+
+    public loadSubProgram(subProgram: SevenMachineProgram) {
+        this._pushCurrentContinuation();
+        this.loadProgram(subProgram);
     }
 
     private _options: SevenMachineInitOptions|undefined;
@@ -217,12 +213,6 @@ export class SevenMachine {
             v.forEach((v) => this.registerExternFunction(v));
         });
     }
-}
-
-export type ISevenMachineInComponent = {
-    reactiveVariableMap: {[varName: string]: SevenReactiveVariable<any>},
-    staticVariableMap: {[varName: string]: any},
-    runProgram: (program: SevenMachineProgram) => void
 }
 
 export type SevenMachineProgram = SevenMachineInstr[];

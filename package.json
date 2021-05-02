@@ -1,5 +1,5 @@
 {
-  "name": "seven",
+  "name": "@bctnry/seven",
   "version": "0.1.0",
   "description": "",
   "main": "./lib/Seven.js",
