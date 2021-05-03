@@ -128,12 +128,19 @@ export class SevenMachine {
     private _callStack: number[] = [];
     private _trace: SevenMachineInstr[] = [];
     private _lock: boolean = false;
+    private _stepRequested: boolean = false;
     public lock() { this._lock = true; }
-    public unlock() { this._lock = false; }
+    public unlock() {
+        this._lock = false;
+        if (this._stepRequested) {
+            this._stepRequested = false;
+            this.step();
+        }
+    }
     public get locked() { return this._lock; }
 
     public step(singleStep: boolean = false) {
-        if (this._lock) { return; }
+        if (this._lock) { this._stepRequested = true; return; }
         // NOTE: `+1` means the current program.
         fullStepProcess: while (this._machineContinuationStack.length + 1 > 0) {
             let instr = this.currentInstr;

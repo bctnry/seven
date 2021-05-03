@@ -1,6 +1,6 @@
 {
   "name": "@bctnry/seven",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "",
   "main": "./lib/Seven.js",
   "scripts": {
@@ -8,7 +8,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git@git.chaconne.dev:root/seven.git"
+    "url": "git@github.com:bctnry/seven.git"
   },
   "author": "Sebastian René Higgins",
   "license": "BSD-3-Clause",
