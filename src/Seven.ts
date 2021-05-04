@@ -67,11 +67,13 @@ export class SevenMachine {
     public registerComponent(component: SevenComponent) {
         this._componentDict[component.name] = component;
         this._componentListDirtyFlag = true;
+        return this;
     }
 
     private _externFunctionMap: {[key: string]: SevenExternFunction} = {};
     public registerExternFunction(externFunction: SevenExternFunction) {
         this._externFunctionMap[externFunction.name] = externFunction;
+        return this;
     }
     
     private _reactiveVariableMap: {[varName: string]: SevenReactiveVariable<any>} = {};
