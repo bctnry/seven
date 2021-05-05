@@ -142,7 +142,6 @@ export class SevenMachine {
     public get locked() { return this._lock; }
 
     public step(singleStep: boolean = false) {
-        if (this._lock) { this._stepRequested = true; return; }
         // NOTE: `+1` means the current program.
         fullStepProcess: while (this._machineContinuationStack.length + 1 > 0) {
             let instr = this.currentInstr;
@@ -156,6 +155,7 @@ export class SevenMachine {
             }
             let keepStepping: boolean = true;
             do {
+                if (this._lock) { this._stepRequested = true; return; }
                 switch (instr._) {
                     case SevenMachineInstrType.SET_REACTIVE_VAR: {
                         this._reactiveVariableMap[instr.name].value = (instr.eval?this.jsEval:this.eval)(instr.value as any);
