@@ -23,6 +23,18 @@ export class SevenReactiveVariable<A> {
     }
 }
 
+
+export type SevenMachineSavedState = {
+    staticVariableMap: {[varName: string]: any},
+    reactiveVariableMap: {[varName: string]: any},
+    currentProgram: SevenMachineProgram,
+    currentPosition: number,
+    _machineContinuationStack: _MachineContinuation[],
+    _callStack: number[],
+    _trace: SevenMachineInstr[],
+    _lock: boolean,
+    _stepRequested: boolean,
+};
 export interface SevenComponent {
     name: string,
     call: (machine: SevenMachine, args: {[name: string]: any}) => boolean|void,
@@ -221,6 +233,31 @@ export class SevenMachine {
         [Prelude.BasicMath, Prelude.BasicBitwise, Prelude.BasicConditon, Prelude.BasicPrimitive].forEach((v) => {
             v.forEach((v) => this.registerExternFunction(v));
         });
+    }
+
+    public serialize(): SevenMachineSavedState {
+        let reactiveVariableMap: {[varName: string]: any} = {};
+        for (const k in this.reactiveVariableMap) {
+            if (Object.prototype.hasOwnProperty.call(this.reactiveVariableMap, k)) {
+                const reactiveVariable = this.reactiveVariableMap[k];
+                reactiveVariableMap[k] = reactiveVariable.value;
+            }
+        }
+        return {
+            staticVariableMap: this.staticVariableMap,
+            reactiveVariableMap: reactiveVariableMap,
+            currentProgram: this._program,
+            currentPosition: this._position,
+            _machineContinuationStack: this._machineContinuationStack,
+            _callStack: this._callStack,
+            _trace: this._trace,
+            _lock: this._lock,
+            _stepRequested: this._stepRequested,
+        };
+    }
+
+    public static deserialize(st: SevenMachineSavedState) {
+        
     }
 }
 
