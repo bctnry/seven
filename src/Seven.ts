@@ -256,8 +256,28 @@ export class SevenMachine {
         };
     }
 
+    /** NOTE: this will generate a brand new SevenMachine with no registered
+     *  components; you have to manually add component after deserialization.
+     */
     public static deserialize(st: SevenMachineSavedState) {
-        
+        let x = new SevenMachine();
+        let reactiveVarMap: {[name: string]:SevenReactiveVariable<any>} = {};
+        for (const k in st.reactiveVariableMap) {
+            if (Object.prototype.hasOwnProperty.call(st.reactiveVariableMap, k)) {
+                const element = st.reactiveVariableMap[k];
+                reactiveVarMap[k] = new SevenReactiveVariable(element);
+            }
+        }
+        x._reactiveVariableMap = reactiveVarMap;
+        x._staticVariableMap = st.staticVariableMap;
+        x._program = st.currentProgram;
+        x._position = st.currentPosition;
+        x._machineContinuationStack = st._machineContinuationStack;
+        x._callStack = st._callStack;
+        x._trace = st._trace;
+        x._lock = st._lock;
+        x._stepRequested = st._stepRequested;
+        return x;
     }
 }
 
